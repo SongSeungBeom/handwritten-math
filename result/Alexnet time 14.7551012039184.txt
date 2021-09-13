@@ -1,0 +1,6 @@
+Predicted:      9     8     +     N     6
+Predicted:      A     3     +     C     0   lim     C     7     A     Y
+Predicted:    int     X     +   log   tan     M
+time : 14.755101203918457
+
+Process finished with exit code 0

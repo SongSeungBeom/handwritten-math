@@ -1,0 +1,6 @@
+Predicted:      9     3     +     N     6
+Predicted:      1     3     +     C     0    pi     C     7     5     )
+Predicted:    div     X     +     3     d     N
+time : 14.307069063186646
+
+Process finished with exit code 0

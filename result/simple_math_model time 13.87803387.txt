@@ -1,0 +1,4 @@
+Predicted:      9     A     +     N     6
+Predicted:      2     3     +     C     0     5     C     q     5     0
+Predicted:    int     Y     +     3     A     M
+time : 13.878033876419067

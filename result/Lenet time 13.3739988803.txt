@@ -1,0 +1,4 @@
+Predicted:      q     b     +     N     e
+Predicted:      2     3     +     C     0     8     C     A     Z infty
+Predicted:    int     X     +     3     2 infty
+time : 13.373998880386353
