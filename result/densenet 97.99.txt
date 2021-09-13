@@ -1,0 +1,53 @@
+torch.Size([3, 55])
+Epoch 0/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.267145, val loss: 0.222455, accuracy: 93.65, time: 55.2948 min
+----------
+Epoch 1/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.123973, val loss: 0.143048, accuracy: 96.04, time: 110.7454 min
+----------
+Epoch 2/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.096455, val loss: 0.114979, accuracy: 96.87, time: 165.6790 min
+----------
+Epoch 3/14, current lr= 0.01
+train loss: 0.079939, val loss: 0.122744, accuracy: 96.70, time: 219.5711 min
+----------
+Epoch 4/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.069399, val loss: 0.104791, accuracy: 97.09, time: 271.1706 min
+----------
+Epoch 5/14, current lr= 0.01
+train loss: 0.062101, val loss: 0.108758, accuracy: 96.93, time: 320.8901 min
+----------
+Epoch 6/14, current lr= 0.01
+train loss: 0.054273, val loss: 0.107086, accuracy: 97.31, time: 370.3925 min
+----------
+Epoch 7/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.050871, val loss: 0.083203, accuracy: 97.74, time: 420.2611 min
+----------
+Epoch 8/14, current lr= 0.01
+train loss: 0.045948, val loss: 0.088756, accuracy: 97.82, time: 469.8209 min
+----------
+Epoch 9/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.044397, val loss: 0.081228, accuracy: 97.98, time: 519.3652 min
+----------
+Epoch 10/14, current lr= 0.01
+train loss: 0.040066, val loss: 0.093090, accuracy: 97.86, time: 569.0997 min
+----------
+Epoch 11/14, current lr= 0.01
+train loss: 0.039448, val loss: 0.087680, accuracy: 98.11, time: 621.4969 min
+----------
+Epoch 12/14, current lr= 0.01
+Copied best model weights!
+train loss: 0.036567, val loss: 0.080550, accuracy: 98.22, time: 680.6412 min
+----------
+Epoch 13/14, current lr= 0.01
+train loss: 0.034560, val loss: 0.101248, accuracy: 97.93, time: 734.4920 min
+----------
+Epoch 14/14, current lr= 0.01
+train loss: 0.033888, val loss: 0.104435, accuracy: 97.99, time: 792.9688 min
+----------
