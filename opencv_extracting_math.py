@@ -12,8 +12,8 @@ cv2.imshow('binary',binary)
 k = cv2.waitKey(0)
 cv2.destroyAllWindows()
 
-contours , hierarchy = cv2.findContours(binary , cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE) #외곽선 검출
-color = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR) #이진화 이미지를 color이미지로 복사
+contours , hierarchy = cv2.findContours(binary , cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+color = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 cv2.drawContours(color , contours , -1 , (0,255,0),3) #초록색으로 외곽선을 그린다
 
 bR_arr = []
@@ -21,8 +21,8 @@ digit_arr = []
 digit_arr2 = []
 count = 0
 
-#검출한 외곽선에 사각형을 그려서 배열에 추가
-for i in range(len(contours)) :
+
+for i in range(len(contours)) : #외곽선에 사각형 그리기
     bin_tmp = binary.copy()
     x,y,w,h = cv2.boundingRect(contours[i])
     bR_arr.append([x,y,w,h])
