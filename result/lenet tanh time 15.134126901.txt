@@ -1,0 +1,4 @@
+Predicted:      1     b     +     N     b
+Predicted:      2     3     +     C     0     A     C     N     3     3
+Predicted:      1     X     +     3     +     A
+time : 15.134126901626587
