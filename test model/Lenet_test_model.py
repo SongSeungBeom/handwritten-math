@@ -14,10 +14,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 trans = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor(), transforms.Normalize((0.5,0.5, 0.5),(0.5,0.5,0.5))])
 
-trainset = torchvision.datasets.ImageFolder(root = "./loaderdata/train", transform=trans)
-testset1 = torchvision.datasets.ImageFolder(root = "./testing_img_extracting/98+76", transform=trans)
-testset2 = torchvision.datasets.ImageFolder(root = "./testing_img_extracting/23+cos(75)", transform=trans)
-testset3 = torchvision.datasets.ImageFolder(root = "./testing_img_extracting/integral x+3 dx", transform=trans)
+trainset = torchvision.datasets.ImageFolder(root = "../loaderdata/train", transform=trans)
+testset1 = torchvision.datasets.ImageFolder(root = "../testing_img_extracting/98+76", transform=trans)
+testset2 = torchvision.datasets.ImageFolder(root = "../testing_img_extracting/23+cos(75)", transform=trans)
+testset3 = torchvision.datasets.ImageFolder(root = "../testing_img_extracting/integral x+3 dx", transform=trans)
 
 
 trainloader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=4)
@@ -28,25 +28,25 @@ testloader3 = DataLoader(testset3, batch_size=16, shuffle= False, num_workers=4)
 classes = trainset.classes
 
 
-class LeNet(nn.Module):
+class LeNet_5(nn.Module):
     def __init__(self):
-        super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 55)
+        super(LeNet_5,self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, kernel_size=5, stride=1)
+        self.conv2 = nn.Conv2d(6, 16, kernel_size=5, stride=1)
+        self.conv3 = nn.Conv2d(16, 120, kernel_size=5, stride=1)
+        self.fc1 = nn.Linear(120, 84)
+        self.fc2 = nn.Linear(84, 55)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        x = F.tanh(self.conv1(x))
+        x = F.avg_pool2d(x, 2, 2)
+        x = F.tanh(self.conv2(x))
+        x = F.avg_pool2d(x, 2, 2)
+        x = F.tanh(self.conv3(x))
+        x = x.view(-1, 120)
+        x = F.tanh(self.fc1(x))
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
 
 def imshow(img):
     img = img / 2 + 0.5     # unnormalize
@@ -55,8 +55,8 @@ def imshow(img):
     plt.show()
 
 if __name__ == '__main__':
-    net = LeNet()
-    net.load_state_dict(torch.load('../model/55_classes_Lenet_03.pth'))
+    net = LeNet_5()
+    net.load_state_dict(torch.load('../model/55_classes_Lenet_tanh_03.pth'))
 
     start = time.time()
 
