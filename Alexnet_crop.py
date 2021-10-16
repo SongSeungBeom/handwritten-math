@@ -9,14 +9,14 @@ from torchvision import transforms
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 import time
 import copy
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 device = torch.device("cuda:0")
 #gpu 가속을 위한 준비.
 
-trans = transforms.Compose([transforms.Resize(227), transforms.ToTensor()])
+trans = transforms.Compose([transforms.Resize(256), transforms.RandomCrop(227), transforms.ToTensor(), transforms.Normalize((0.5,0.5, 0.5),(0.5,0.5,0.5))])
 
 trainset = torchvision.datasets.ImageFolder(root = "./loaderdata/train", transform=trans)
 testset =  torchvision.datasets.ImageFolder(root = "./loaderdata/test", transform=trans)
@@ -171,6 +171,8 @@ def train_val(model, params):
     model.load_state_dict(best_model_wts)
     return model, loss_history, metric_history
 
+
+
 if __name__ == '__main__':
     model = AlexNet()
     model.to(device)
@@ -179,6 +181,7 @@ if __name__ == '__main__':
     opt = optim.Adam(model.parameters(), lr=0.01)
 
     lr_scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.1, patience=10)
+
     params_train = {
         'num_epochs': 10,
         'optimizer': opt,
@@ -187,7 +190,7 @@ if __name__ == '__main__':
         'val_dl': testloader,
         'sanity_check': False,
         'lr_scheduler': lr_scheduler,
-        'path2weights': './model/Alexnet.pt',
+        'path2weights': './model/Alexnet_3.pt',
     }
 
     model, loss_hist, metric_hist = train_val(model, params_train)

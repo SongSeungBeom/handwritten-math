@@ -9,14 +9,15 @@ from torchvision import transforms
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 import time
 import copy
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from efficientnet_pytorch import EfficientNet
 
 device = torch.device("cuda:0")
 #gpu 가속을 위한 준비.
 
-trans = transforms.Compose([transforms.Resize(227), transforms.ToTensor()])
+trans = transforms.Compose([transforms.Resize(224), transforms.ToTensor()])
 
 trainset = torchvision.datasets.ImageFolder(root = "./loaderdata/train", transform=trans)
 testset =  torchvision.datasets.ImageFolder(root = "./loaderdata/test", transform=trans)
@@ -25,49 +26,6 @@ trainloader = DataLoader(trainset, batch_size=32, shuffle=True)
 testloader = DataLoader(testset, batch_size=32, shuffle=True)
 
 classes = trainset.classes
-
-
-class AlexNet(nn.Module):
-    def __init__(self):
-        super(AlexNet, self).__init__()
-        self.convnet = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=96, kernel_size=11, padding=0, stride=4),  # 227 -> 55
-            nn.ReLU(inplace=True),
-            nn.LocalResponseNorm(size=5, k=2),
-            nn.MaxPool2d(kernel_size=3, stride=2),  # 55 -> 27
-
-            nn.Conv2d(in_channels=96, out_channels=256, kernel_size=5, padding=2, stride=1),  # 27 -> 27
-            nn.ReLU(inplace=True),
-            nn.LocalResponseNorm(size=5, k=2),
-            nn.MaxPool2d(kernel_size=3, stride=2),  # 27 -> 13
-
-            nn.Conv2d(in_channels=256, out_channels=384, kernel_size=3, padding=1, stride=1),
-            nn.ReLU(inplace=True),
-            nn.LocalResponseNorm(size=5, k=2),
-            nn.Conv2d(in_channels=384, out_channels=384, kernel_size=3, padding=1, stride=1),
-            nn.ReLU(inplace=True),
-            nn.LocalResponseNorm(size=5, k=2),
-            nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, padding=1, stride=1),
-            nn.ReLU(inplace=True),
-            nn.LocalResponseNorm(size=5, k=2),
-            nn.MaxPool2d(kernel_size=3, stride=2),  # 13 -> 6
-        )
-
-        self.fclayer = nn.Sequential(
-            nn.Linear(256 * 6 * 6, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(4096, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(4096, 55),
-        )
-
-    def forward(self, x: torch.Tensor):
-        x = self.convnet(x)
-        x = torch.flatten(x, 1)
-        x = self.fclayer(x)
-        return x
 
 def get_lr(opt):
     for param_group in opt.param_groups:
@@ -171,14 +129,17 @@ def train_val(model, params):
     model.load_state_dict(best_model_wts)
     return model, loss_history, metric_history
 
+
+
 if __name__ == '__main__':
-    model = AlexNet()
+    model = EfficientNet.from_name('efficientnet-b0', num_classes=55)
     model.to(device)
 
     loss_func = nn.CrossEntropyLoss(reduction='sum')
     opt = optim.Adam(model.parameters(), lr=0.01)
 
     lr_scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.1, patience=10)
+
     params_train = {
         'num_epochs': 10,
         'optimizer': opt,
@@ -187,7 +148,8 @@ if __name__ == '__main__':
         'val_dl': testloader,
         'sanity_check': False,
         'lr_scheduler': lr_scheduler,
-        'path2weights': './model/Alexnet.pt',
+        'path2weights': './model/efficientNetb0_down_01.pt',
     }
 
     model, loss_hist, metric_hist = train_val(model, params_train)
+

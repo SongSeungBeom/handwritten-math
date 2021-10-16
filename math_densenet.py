@@ -13,136 +13,157 @@ import math
 import time
 import copy
 import os
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+train_trans = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor()])
 
-train_trans = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor(), transforms.Normalize((0.5,0.5, 0.5),(0.5,0.5,0.5))])
-
-test_trans = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor(), transforms.Normalize((0.5,0.5, 0.5),(0.5,0.5,0.5))])
+test_trans = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor()])
 
 trainset = torchvision.datasets.ImageFolder(root = "./loaderdata/train", transform=train_trans)
 testset =  torchvision.datasets.ImageFolder(root = "./loaderdata/test", transform=test_trans)
 
-train_dl = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=4)
-val_dl = DataLoader(testset, batch_size=64, shuffle=True, num_workers=4)
+train_dl = DataLoader(trainset, batch_size=32, shuffle=True)
+val_dl = DataLoader(testset, batch_size=32, shuffle=True)
 
 classes = trainset.classes
 
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
-class BottleNeck(nn.Module):
-    def __init__(self, in_channels, growth_rate):
-        super().__init__()
-        inner_channels = 4 * growth_rate
-
-        self.residual = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, inner_channels, 1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(inner_channels),
-            nn.ReLU(),
-            nn.Conv2d(inner_channels, growth_rate, 3, stride=1, padding=1, bias=False)
-        )
-
-        self.shortcut = nn.Sequential()
+class bn_relu_conv(nn.Module):
+    def __init__(self, nin, nout, kernel_size, stride, padding, bias=False):
+        super(bn_relu_conv, self).__init__()
+        self.batch_norm = nn.BatchNorm2d(nin)
+        self.relu = nn.ReLU(True)
+        self.conv = nn.Conv2d(nin, nout, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
 
     def forward(self, x):
-        return torch.cat([self.shortcut(x), self.residual(x)], 1)
+        out = self.batch_norm(x)
+        out = self.relu(out)
+        out = self.conv(out)
 
-class Transition(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
+        return out
 
-        self.down_sample = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, 1, stride=1, padding=0, bias=False),
-            nn.AvgPool2d(2, stride=2)
-        )
+
+class bottleneck_layer(nn.Sequential):
+    def __init__(self, nin, growth_rate, drop_rate=0.2):
+        super(bottleneck_layer, self).__init__()
+
+        self.add_module('conv_1x1',
+                        bn_relu_conv(nin=nin, nout=growth_rate * 4, kernel_size=1, stride=1, padding=0, bias=False))
+        self.add_module('conv_3x3',
+                        bn_relu_conv(nin=growth_rate * 4, nout=growth_rate, kernel_size=3, stride=1, padding=1,
+                                     bias=False))
+
+        self.drop_rate = drop_rate
 
     def forward(self, x):
-        return self.down_sample(x)
+        bottleneck_output = super(bottleneck_layer, self).forward(x)
+        if self.drop_rate > 0:
+            bottleneck_output = F.dropout(bottleneck_output, p=self.drop_rate, training=self.training)
+
+        bottleneck_output = torch.cat((x, bottleneck_output), 1)
+
+        return bottleneck_output
+
+
+class Transition_layer(nn.Sequential):
+    def __init__(self, nin, theta=0.5):
+        super(Transition_layer, self).__init__()
+
+        self.add_module('conv_1x1',
+                        bn_relu_conv(nin=nin, nout=int(nin * theta), kernel_size=1, stride=1, padding=0, bias=False))
+        self.add_module('avg_pool_2x2', nn.AvgPool2d(kernel_size=2, stride=2, padding=0))
+
+
+class DenseBlock(nn.Sequential):
+    def __init__(self, nin, num_bottleneck_layers, growth_rate, drop_rate=0.2):
+        super(DenseBlock, self).__init__()
+
+        for i in range(num_bottleneck_layers):
+            nin_bottleneck_layer = nin + growth_rate * i
+            self.add_module('bottleneck_layer_%d' % i,
+                            bottleneck_layer(nin=nin_bottleneck_layer, growth_rate=growth_rate, drop_rate=drop_rate))
 
 
 class DenseNet(nn.Module):
-    def __init__(self, nblocks, growth_rate=12, reduction=0.5, num_classes=55, init_weights=True):
-        super().__init__()
+    def __init__(self, growth_rate=12, num_layers=100, theta=0.5, drop_rate=0.2, num_classes=55):
+        super(DenseNet, self).__init__()
 
-        self.growth_rate = growth_rate
-        inner_channels = 2 * growth_rate  # output channels of conv1 before entering Dense Block
+        assert (num_layers - 4) % 6 == 0
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(3, inner_channels, 7, stride=2, padding=3),
-            nn.MaxPool2d(3, 2, padding=1)
-        )
+        # (num_layers-4)//6
+        num_bottleneck_layers = (num_layers - 4) // 6
 
-        self.features = nn.Sequential()
+        # 32 x 32 x 3 --> 32 x 32 x (growth_rate*2)
+        self.dense_init = nn.Conv2d(3, growth_rate * 2, kernel_size=3, stride=1, padding=1, bias=True)
 
-        for i in range(len(nblocks) - 1):
-            self.features.add_module('dense_block_{}'.format(i), self._make_dense_block(nblocks[i], inner_channels))
-            inner_channels += growth_rate * nblocks[i]
-            out_channels = int(reduction * inner_channels)
-            self.features.add_module('transition_layer_{}'.format(i), Transition(inner_channels, out_channels))
-            inner_channels = out_channels
+        # 32 x 32 x (growth_rate*2) --> 32 x 32 x [(growth_rate*2) + (growth_rate * num_bottleneck_layers)]
+        self.dense_block_1 = DenseBlock(nin=growth_rate * 2, num_bottleneck_layers=num_bottleneck_layers,
+                                        growth_rate=growth_rate, drop_rate=drop_rate)
 
-        self.features.add_module('dense_block_{}'.format(len(nblocks) - 1),
-                                 self._make_dense_block(nblocks[len(nblocks) - 1], inner_channels))
-        inner_channels += growth_rate * nblocks[len(nblocks) - 1]
-        self.features.add_module('bn', nn.BatchNorm2d(inner_channels))
-        self.features.add_module('relu', nn.ReLU())
+        # 32 x 32 x [(growth_rate*2) + (growth_rate * num_bottleneck_layers)] --> 16 x 16 x [(growth_rate*2) + (growth_rate * num_bottleneck_layers)]*theta
+        nin_transition_layer_1 = (growth_rate * 2) + (growth_rate * num_bottleneck_layers)
+        self.transition_layer_1 = Transition_layer(nin=nin_transition_layer_1, theta=theta)
 
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.linear = nn.Linear(inner_channels, num_classes)
+        # 16 x 16 x nin_transition_layer_1*theta --> 16 x 16 x [nin_transition_layer_1*theta + (growth_rate * num_bottleneck_layers)]
+        self.dense_block_2 = DenseBlock(nin=int(nin_transition_layer_1 * theta),
+                                        num_bottleneck_layers=num_bottleneck_layers, growth_rate=growth_rate,
+                                        drop_rate=drop_rate)
 
-        # weight initialization
-        if init_weights:
-            self._initialize_weights()
+        # 16 x 16 x [nin_transition_layer_1*theta + (growth_rate * num_bottleneck_layers)] --> 8 x 8 x [nin_transition_layer_1*theta + (growth_rate * num_bottleneck_layers)]*theta
+        nin_transition_layer_2 = int(nin_transition_layer_1 * theta) + (growth_rate * num_bottleneck_layers)
+        self.transition_layer_2 = Transition_layer(nin=nin_transition_layer_2, theta=theta)
+
+        # 8 x 8 x nin_transition_layer_2*theta --> 8 x 8 x [nin_transition_layer_2*theta + (growth_rate * num_bottleneck_layers)]
+        self.dense_block_3 = DenseBlock(nin=int(nin_transition_layer_2 * theta),
+                                        num_bottleneck_layers=num_bottleneck_layers, growth_rate=growth_rate,
+                                        drop_rate=drop_rate)
+
+        nin_fc_layer = int(nin_transition_layer_2 * theta) + (growth_rate * num_bottleneck_layers)
+
+        # [nin_transition_layer_2*theta + (growth_rate * num_bottleneck_layers)] --> num_classes
+        self.fc_layer = nn.Linear(nin_fc_layer, num_classes)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.features(x)
-        x = self.avg_pool(x)
-        x = x.view(x.size(0), -1)
-        x = self.linear(x)
-        return x
+        dense_init_output = self.dense_init(x)
 
-    def _make_dense_block(self, nblock, inner_channels):
-        dense_block = nn.Sequential()
-        for i in range(nblock):
-            dense_block.add_module('bottle_neck_layer_{}'.format(i), BottleNeck(inner_channels, self.growth_rate))
-            inner_channels += self.growth_rate
-        return dense_block
+        dense_block_1_output = self.dense_block_1(dense_init_output)
+        transition_layer_1_output = self.transition_layer_1(dense_block_1_output)
 
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.constant_(m.bias, 0)
+        dense_block_2_output = self.dense_block_2(transition_layer_1_output)
+        transition_layer_2_output = self.transition_layer_2(dense_block_2_output)
 
+        dense_block_3_output = self.dense_block_3(transition_layer_2_output)
 
-def DenseNet_121():
-    return DenseNet([6, 12, 24, 6])
+        global_avg_pool_output = F.adaptive_avg_pool2d(dense_block_3_output, (1, 1))
+        global_avg_pool_output_flat = global_avg_pool_output.view(global_avg_pool_output.size(0), -1)
 
+        output = self.fc_layer(global_avg_pool_output_flat)
+
+        return output
+
+def DenseNetBC_100_12():
+    return DenseNet(growth_rate=12, num_layers=100, theta=0.5, drop_rate=0.2, num_classes=55)
+
+def DenseNetBC_250_24():
+    return DenseNet(growth_rate=24, num_layers=250, theta=0.5, drop_rate=0.2, num_classes=55)
+
+def DenseNetBC_190_40():
+    return DenseNet(growth_rate=40, num_layers=190, theta=0.5, drop_rate=0.2, num_classes=55)
 
 def get_lr(opt):
     for param_group in opt.param_groups:
         return param_group['lr']
 
 
+# calculate the metric per mini-batch
 def metric_batch(output, target):
     pred = output.argmax(1, keepdim=True)
     corrects = pred.eq(target.view_as(pred)).sum().item()
     return corrects
 
 
+# calculate the loss per mini-batch
 def loss_batch(loss_func, output, target, opt=None):
     loss_b = loss_func(output, target)
     metric_b = metric_batch(output, target)
@@ -155,6 +176,7 @@ def loss_batch(loss_func, output, target, opt=None):
     return loss_b.item(), metric_b
 
 
+# calculate the loss per epochs
 def loss_epoch(model, loss_func, dataset_dl, sanity_check=False, opt=None):
     running_loss = 0.0
     running_metric = 0.0
@@ -180,6 +202,7 @@ def loss_epoch(model, loss_func, dataset_dl, sanity_check=False, opt=None):
     return loss, metric
 
 
+# function to start training
 def train_val(model, params):
     num_epochs = params['num_epochs']
     loss_func = params['loss_func']
@@ -230,24 +253,21 @@ def train_val(model, params):
     model.load_state_dict(best_model_wts)
     return model, loss_history, metric_history
 
-if __name__ == '__main__':
-    x = torch.randn(3, 3, 64, 64)
-    model = DenseNet_121()
-    output = model(x)
-    print(output.size())
-    loss_func = nn.CrossEntropyLoss(reduction='sum')
-    opt = optim.Adam(model.parameters(), lr=0.01)
-    lr_scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.1, patience=8)
-    params_train = \
-        {
-        'num_epochs': 15,
-        'optimizer': opt,
-        'loss_func': loss_func,
-        'train_dl': train_dl,
-        'val_dl': val_dl,
-        'sanity_check': False,
-        'lr_scheduler': lr_scheduler,
-        'path2weights': './model/densenet2.pt',
-    }
-    model, loss_hist, metric_hist = train_val(model, params_train)
-    num_epochs = params_train['num_epochs']
+model = DenseNetBC_100_12()
+model.to(device)
+loss_func = nn.CrossEntropyLoss(reduction='sum')
+opt = optim.Adam(model.parameters(), lr=0.01)
+lr_scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.1, patience=8)
+
+params_train = {
+    'num_epochs': 10,
+    'optimizer': opt,
+    'loss_func': loss_func,
+    'train_dl': train_dl,
+    'val_dl': val_dl,
+    'sanity_check': False,
+    'lr_scheduler': lr_scheduler,
+    'path2weights': './model/denseNet_05.pt',
+}
+
+model, loss_hist, metric_hist = train_val(model, params_train)

@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0")
 #gpu 가속을 위한 준비.
 
 trans = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor(), transforms.Normalize((0.5,0.5, 0.5),(0.5,0.5,0.5))])
@@ -19,8 +19,8 @@ trans = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor(), 
 trainset = torchvision.datasets.ImageFolder(root = "./loaderdata/train", transform=trans)
 testset =  torchvision.datasets.ImageFolder(root = "./loaderdata/test", transform=trans)
 
-trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=4)
-testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=4)
+trainloader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=8)
+testloader = DataLoader(testset, batch_size=16, shuffle=True, num_workers=8)
 
 classes = trainset.classes
 
@@ -39,7 +39,7 @@ class Net(nn.Module): #간단한 cnn모델
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1) # 배치를 제외한 모든 차원을 평탄화(flatten)
+        x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     net.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
 
     for epoch in range(15): #15번 반복 학습
 
@@ -67,14 +67,14 @@ if __name__ == '__main__':
             optimizer.step() #최적화
 
             running_loss += loss.item()
-            if i % 2000 == 1999:
+            if i % 1000 == 999:
                 print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 2000)) #2000개씩 학습할 때마다 과정 출력
+                      (epoch + 1, i + 1, running_loss / 1000)) #1000개씩 학습할 때마다 과정 출력
                 running_loss = 0.0
 
     print('Finished Training')
 
-    PATH = './model/55_classes_math_net_05.pth'
+    PATH = './model/55_classes_simple_math_net_01.pth'
     torch.save(net.state_dict(), PATH) #모델 저장
 
     correct = 0
@@ -89,4 +89,4 @@ if __name__ == '__main__':
             total += labels.size(0)
             correct += (predicted == labels).sum().item() #예측과 정답이 일치하는 경우를 세서 정확도를 구한다.
 
-    print('Accuracy of the network on the 180000 test images: %d %%' % (100 * correct / total))
+    print('Accuracy of the network on the 72287 test images: %5f %%' % (100 * correct / total))
